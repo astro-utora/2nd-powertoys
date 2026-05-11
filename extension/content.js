@@ -160,7 +160,11 @@
       const now = Date.now();
       if (now - lastFiredAt < 800) return; // dedupe pointerdown/mousedown/click
       lastFiredAt = now;
-      const info = findNumberNear(btn) || readStoredNumber(btn);
+      // Prefer the digits we stashed at scan time. Re-scanning the DOM here is
+      // unreliable because `decorate` may have replaced the visible phone text
+      // with the contact name, causing findNumberNear to fall through and pick
+      // up a different number on the page (e.g. the receiver's own line).
+      const info = readStoredNumber(btn) || findNumberNear(btn);
       dbg(kind + ' fired (' + ev.type + ') number=', info && info.digits);
       if (!info || !info.digits) return;
       send({ type: kind === 'accept' ? 'callAccepted' : 'callRejected', number: info.digits });
@@ -201,6 +205,34 @@
 
   function scanDoc(doc) {
     if (!doc) return;
+    // Reset stashed caller digits on any Accept/Reject button that is no
+    // longer visible — i.e. the previous incoming-call UI was dismissed.
+    // This lets the next call capture fresh digits instead of reusing the
+    // stale ones from the prior call.
+    try {
+      const stashed = doc.querySelectorAll('[' + ATTR_NUM + ']');
+      for (const el of stashed) {
+        if (!isVisible(el)) {
+          el.removeAttribute(ATTR_NUM);
+          // Also revert any in-place rename so the next call's number/name
+          // is re-derived from scratch.
+          const renamed = doc.querySelectorAll('[' + ATTR_RENAMED + ']');
+          for (const r of renamed) {
+            const orig = r.getAttribute(ATTR_ORIG);
+            if (orig != null) {
+              // Find the first text node and restore it.
+              for (const child of r.childNodes) {
+                if (child.nodeType === 3) { child.nodeValue = orig; break; }
+              }
+            }
+            r.removeAttribute(ATTR_RENAMED);
+            r.removeAttribute(ATTR_ORIG);
+            r.removeAttribute('title');
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
+
     // Candidates: buttons, anchors, role=button, plus <input> (VaxPhone uses
     // <input id="BtnAccept">). Limit to visible ones.
     const candidates = doc.querySelectorAll(
@@ -212,6 +244,18 @@
       const kind = classify(el);
       if (!kind) continue;
       matched++;
+      // Once we've stashed the caller's digits on this button, do NOT
+      // re-scan / re-decorate. Subsequent scans run after `decorate` has
+      // replaced the visible phone text with the contact name, so
+      // `findNumberNear` would fall through and pick up an unrelated number
+      // on the page (typically the receiver's own line) — overwriting the
+      // correct caller digits and causing the popup to prompt to save the
+      // receiver's number on Accept.
+      const stored = el.getAttribute(ATTR_NUM);
+      if (stored) {
+        hook(el, kind);
+        continue;
+      }
       const info = findNumberNear(el);
       dbg('scan match', kind, el.tagName + (el.id ? '#' + el.id : ''), 'number=', info && info.digits);
       if (info) {
@@ -304,6 +348,43 @@
     return doc.getElementById('PhoneTabLink');
   }
 
+  // True when the WebPhone is ringing, on a call, or otherwise in a state
+  // we shouldn't interrupt by clicking tabs or the parent restart button.
+  function isCallActive(doc) {
+    try {
+      // Most reliable signal: VaxPhone flips BtnDial's value to "Hangup" while
+      // a call is dialing / connected. When idle it reads "Dial".
+      const dial = doc.getElementById('BtnDial');
+      if (dial && /hang\s*up/i.test(dial.value || '')) return true;
+      // Incoming-call modal (visible while ringing).
+      const incoming = doc.getElementById('incomingModal');
+      if (incoming) {
+        const style = incoming.getAttribute('style') || '';
+        const displayed = /display\s*:\s*block/i.test(style) ||
+          incoming.classList.contains('show');
+        // Also require aria-hidden to NOT be true — Bootstrap leaves the modal
+        // in the DOM with display:none + aria-hidden=true between calls.
+        const hidden = incoming.getAttribute('aria-hidden') === 'true';
+        if (displayed && !hidden) return true;
+      }
+      // Outgoing-call modal, if present.
+      const outgoing = doc.getElementById('outgoingModal') || doc.getElementById('OutgoingModal');
+      if (outgoing) {
+        const s = outgoing.getAttribute('style') || '';
+        const hidden = outgoing.getAttribute('aria-hidden') === 'true';
+        if ((/display\s*:\s*block/i.test(s) || outgoing.classList.contains('show')) && !hidden) {
+          return true;
+        }
+      }
+      // Body has class modal-open AND any .modal.show is the incoming/outgoing dialog.
+      if (doc.body && doc.body.classList.contains('modal-open')) {
+        const shown = doc.querySelector('.modal.show');
+        if (shown && /incoming|outgoing|call/i.test(shown.id || '')) return true;
+      }
+    } catch (_) { /* ignore */ }
+    return false;
+  }
+
   function readLogLatestLine(doc) {
     const log = doc.getElementById('ListPhoneLog');
     if (!log) return '';
@@ -346,6 +427,13 @@
       const doc = getWebPhoneDoc();
       dbg('heal tick. webphone doc?', !!doc);
       if (!doc) return;
+      // Don't disturb the user while a call is incoming or in progress —
+      // clicking the settings/phone tab or the parent WebPhone button would
+      // tear down the active SIP session.
+      if (isCallActive(doc)) {
+        dbg('heal: call active, skipping');
+        return;
+      }
       const settingsTab = findSettingsTab(doc);
       dbg('heal: settings tab found?', !!settingsTab);
       if (settingsTab) {
@@ -364,7 +452,7 @@
           dbg('heal: swal confirm found?', !!ok);
           if (ok) ok.click();
         }
-      } else if (/Success to connect to Server WebRTC/i.test(latest)) {
+      } else {
         // Already connected — return to the phone tab so the user sees the dialer.
         const phoneTab = findPhoneTab(doc);
         dbg('heal: phone tab found?', !!phoneTab);

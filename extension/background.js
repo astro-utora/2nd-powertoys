@@ -168,6 +168,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         case 'saveContact': {
           const res = await upsertContact(msg.draft || {});
+          if (res && res.ok && msg.draft && msg.draft.phone) {
+            const { pendingNumber } = await chrome.storage.local.get(STORAGE_KEYS.pending);
+            if (pendingNumber && TN.normalizePhone(pendingNumber) === TN.normalizePhone(msg.draft.phone)) {
+              await setPendingNumber(null);
+            }
+          }
           sendResponse(res);
           return;
         }
@@ -194,8 +200,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             contactId: contact ? contact.id : null,
             contactName: contact ? contact.name : null
           });
-          // Only badge if no existing contact (user likely wants to save).
-          if (!contact) {
+          if (contact) {
+            // Known caller — clear any stale "NEW" pending number / badge so
+            // the popup doesn't keep prompting to save.
+            const { pendingNumber } = await chrome.storage.local.get(STORAGE_KEYS.pending);
+            if (pendingNumber && TN.normalizePhone(pendingNumber) === TN.normalizePhone(msg.number)) {
+              await setPendingNumber(null);
+            }
+          } else {
             await setPendingNumber(msg.number);
           }
           sendResponse({ ok: true, contact });

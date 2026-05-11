@@ -107,12 +107,23 @@
 
   function renderPending() {
     const card = $('#pendingCard');
-    if (state.pendingNumber) {
-      card.classList.remove('hidden');
-      $('#pendingNumber').textContent = TN.formatPhone(state.pendingNumber);
-    } else {
+    if (!state.pendingNumber) {
       card.classList.add('hidden');
+      return;
     }
+    // Don't prompt to save a number that's already a contact (can happen if
+    // pendingNumber was set before the contact existed, or normalization
+    // changed). Auto-clear it so the badge/popup card disappear.
+    const pendingNorm = TN.normalizePhone(state.pendingNumber);
+    const existing = state.contacts.find((c) => TN.normalizePhone(c.phone) === pendingNorm);
+    if (existing) {
+      state.pendingNumber = null;
+      send({ type: 'clearPending' });
+      card.classList.add('hidden');
+      return;
+    }
+    card.classList.remove('hidden');
+    $('#pendingNumber').textContent = TN.formatPhone(state.pendingNumber);
   }
 
   // ---- Drawer ----
