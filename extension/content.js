@@ -192,6 +192,20 @@
       el.title || '',
       el.className || ''
     ].join(' ');
+    // VaxPhone's BtnDial flips its value to "Hangup" during an active
+    // outbound (or any) call. We must NOT treat that as a "reject" — doing
+    // so records the dialed number as a Rejected history entry every time
+    // the user ends their own outbound call. The dial/hangup button lives
+    // outside the #incomingModal, so the safest filter is: only hook
+    // accept/reject behavior on elements whose id is explicitly BtnAccept /
+    // BtnReject, or that are inside #incomingModal.
+    const id = el.id || '';
+    if (/^BtnDial$/i.test(id)) return null;
+    const inIncomingModal = !!el.closest('#incomingModal');
+    const isBtnAccept = /^BtnAccept$/i.test(id);
+    const isBtnReject = /^BtnReject$/i.test(id);
+    if (!inIncomingModal && !isBtnAccept && !isBtnReject) return null;
+
     if (ID_ACCEPT_RE.test(ident)) return 'accept';
     if (ID_REJECT_RE.test(ident)) return 'reject';
 
