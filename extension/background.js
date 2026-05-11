@@ -354,9 +354,11 @@ function parseCallLogRows(html) {
 function parseLogDate(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/.exec(s || '');
   if (!m) return null;
-  // The call log page renders timestamps in UTC (+0). Parse as UTC so that
-  // timeAgo() and any local rendering convert correctly to the user's tz.
-  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  // The call log page renders timestamps in UTC+1 (not UTC+0 as the column
+  // header suggests). Treat the parsed wall-clock as UTC+1 and subtract one
+  // hour to get the true UTC epoch, so timeAgo() and local rendering line up
+  // with the user's timezone.
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - 60 * 60 * 1000;
 }
 
 async function scanMissedCalls() {
