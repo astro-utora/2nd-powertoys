@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="55%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="two" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#E0E7FF"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#1e1b4b" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="28" ry="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" ry="28" fill="none"
+        stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+
+  <g filter="url(#shadow)">
+    <!-- Numeral "2" rendered as a continuous stroke for legibility at 16px:
+         top arc → diagonal to baseline-left → horizontal bottom bar. -->
+    <path d="M 38 54
+             C 38 32, 90 28, 90 54
+             C 90 70, 70 80, 44 96
+             L 90 96"
+          fill="none" stroke="url(#two)" stroke-width="14"
+          stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Phone-signal accent: two small dots top-right -->
+    <circle cx="100" cy="40" r="3.4" fill="#ffffff" opacity="0.95"/>
+    <circle cx="108" cy="30" r="2.4" fill="#ffffff" opacity="0.7"/>
+  </g>
+</svg>

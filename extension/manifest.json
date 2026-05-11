@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "2ndNumber Contacts",
+  "version": "1.0.0",
+  "description": "Contacts manager and caller-ID overlay for 2ndnumber.tel — match incoming calls to your saved contacts.",
+  "permissions": ["storage", "activeTab", "alarms"],
+  "host_permissions": ["https://www.2ndnumber.tel/*"],
+  "action": {
+    "default_title": "2ndNumber Contacts",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.2ndnumber.tel/app/*",
+        "https://www.2ndnumber.tel/WebPhone/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "options_page": "options/options.html"
+}

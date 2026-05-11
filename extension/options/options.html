@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>2ndNumber Contacts — Manager</title>
+    <link rel="stylesheet" href="../popup/popup.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body class="options-body">
+    <div class="options-shell">
+      <header class="options-header">
+        <div class="brand">
+          <img src="../icons/icon48.png" alt="" class="brand-logo brand-logo-lg" />
+          <div class="brand-text">
+            <div class="brand-title brand-title-lg">2ndNumber Contacts</div>
+            <div class="brand-sub">Full contact manager</div>
+          </div>
+        </div>
+        <div class="options-actions">
+          <input type="file" id="importFile" accept=".json,.csv" hidden />
+          <button class="btn btn-ghost" id="importBtn">Import…</button>
+          <button class="btn btn-ghost" id="exportJsonBtn">Export JSON</button>
+          <button class="btn btn-ghost" id="exportCsvBtn">Export CSV</button>
+          <button class="btn btn-primary" id="newContact">+ New contact</button>
+        </div>
+      </header>
+
+      <section class="options-toolbar">
+        <div class="search big">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input id="searchInput" type="search" placeholder="Search name, number, company, client…" autocomplete="off" />
+        </div>
+        <div class="muted small" id="countBadge"></div>
+      </section>
+
+      <section class="settings-card" id="settingsCard">
+        <div class="settings-head">
+          <div>
+            <div class="settings-title">WebPhone auto-heal</div>
+            <div class="settings-sub muted small">Periodically opens the webphone settings tab and reconnects the SIP server if it dropped.</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <label class="switch">
+            <input type="checkbox" id="autoHealEnabled" />
+            <span class="switch-slider"></span>
+            <span class="switch-label">Enable auto-heal</span>
+          </label>
+          <label class="field inline">
+            <span>Check every</span>
+            <input id="autoHealIntervalSec" type="number" min="10" max="3600" step="5" />
+            <span class="muted small">seconds</span>
+          </label>
+          <button class="btn btn-primary btn-sm" id="saveSettingsBtn">Save settings</button>
+        </div>
+      </section>
+
+      <section class="settings-card" id="missedCard">
+        <div class="settings-head">
+          <div>
+            <div class="settings-title">Missed-call scanner</div>
+            <div class="settings-sub muted small">Periodically reads <code>/app/calllog.php</code> and records any inbound calls you didn't accept or reject as "Missed".</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <label class="switch">
+            <input type="checkbox" id="missedScanEnabled" />
+            <span class="switch-slider"></span>
+            <span class="switch-label">Enable scanner</span>
+          </label>
+          <label class="field inline">
+            <span>Check every</span>
+            <input id="missedScanIntervalMin" type="number" min="1" max="1440" step="1" />
+            <span class="muted small">minutes</span>
+          </label>
+          <button class="btn btn-ghost btn-sm" id="scanNowBtn">Scan now</button>
+        </div>
+      </section>
+
+      <div class="table-wrap">
+        <table class="table" id="contactsTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Role</th>
+              <th>Company</th>
+              <th>Client</th>
+              <th>Step</th>
+              <th>Round</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="contactsBody"></tbody>
+        </table>
+        <div class="empty hidden" id="contactsEmpty">
+          <div class="empty-emoji">📇</div>
+          <div class="empty-title">No contacts yet</div>
+          <div class="empty-sub">Click <strong>+ New contact</strong> or import a file.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- reuse drawer markup -->
+    <div class="drawer-scrim hidden" id="drawerScrim"></div>
+    <aside class="drawer hidden drawer-centered" id="drawer" aria-hidden="true">
+      <header class="drawer-head">
+        <h3 id="drawerTitle">New contact</h3>
+        <button class="icon-btn" id="closeDrawer" aria-label="Close">×</button>
+      </header>
+      <form id="contactForm" class="form" autocomplete="off">
+        <input type="hidden" name="id" />
+        <label class="field"><span>Phone number <em>*</em></span><input name="phone" type="tel" required /><small class="error" data-error="phone"></small></label>
+        <label class="field"><span>Name <em>*</em></span><input name="name" type="text" required /><small class="error" data-error="name"></small></label>
+        <label class="field"><span>Role</span>
+          <select name="role"><option value="">—</option><option value="recruiter">Recruiter</option><option value="hiring_manager">Hiring Manager</option></select>
+        </label>
+        <label class="field"><span>Company</span><input name="company" type="text" /></label>
+        <label class="field"><span>Client name</span><input name="clientName" type="text" /></label>
+        <div class="field-row">
+          <label class="field"><span>Step</span>
+            <select name="step"><option value="">—</option><option>HR</option><option>Tech</option><option>Final</option></select>
+          </label>
+          <label class="field"><span>Round</span>
+            <select name="round"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
+          </label>
+        </div>
+        <small class="error global" data-error="_"></small>
+        <footer class="drawer-foot">
+          <button type="button" class="btn btn-ghost" id="deleteContact" hidden>Delete</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-ghost" id="cancelDrawer">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </footer>
+      </form>
+    </aside>
+
+    <div class="toast hidden" id="toast"></div>
+
+    <script src="../utils.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>
