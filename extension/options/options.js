@@ -25,11 +25,12 @@
 
   function render() {
     const q = state.search.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, '');
     const items = state.contacts.filter((c) => {
       if (!q) return true;
       return (
         (c.name || '').toLowerCase().includes(q) ||
-        (c.phone || '').includes(q.replace(/\D/g, '')) ||
+        (qDigits && (c.phone || '').includes(qDigits)) ||
         (c.phoneDisplay || '').toLowerCase().includes(q) ||
         (c.company || '').toLowerCase().includes(q) ||
         (c.clientName || '').toLowerCase().includes(q)
