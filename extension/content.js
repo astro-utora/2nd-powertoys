@@ -6,6 +6,23 @@
 (function () {
   'use strict';
 
+  // -------- Debug helper --------
+  // Turn on at runtime via the page console:
+  //   localStorage.setItem('tn-debug','1'); location.reload();
+  // Then watch the console for [TN] lines.
+  const DBG = (() => {
+    try { return localStorage.getItem('tn-debug') === '1'; } catch (_) { return false; }
+  })();
+  const FRAME = (() => {
+    try {
+      const p = location.pathname || '';
+      if (p.indexOf('/WebPhone/') !== -1) return 'WebPhone';
+      return window.top === window ? 'top' : 'frame';
+    } catch (_) { return 'frame'; }
+  })();
+  function dbg(...args) { if (DBG) try { console.log('[TN:' + FRAME + ']', ...args); } catch (_) {} }
+  if (DBG) dbg('content script booted at', location.href);
+
   const ATTR_ORIG = 'data-tn-original';
   const ATTR_HOOKED = 'data-tn-hooked';
   const ATTR_RENAMED = 'data-tn-renamed';
@@ -15,6 +32,10 @@
   const PHONE_RE = /(\+?\d[\d\s().\-]{7,}\d)/;
   const ACCEPT_RE = /\b(accept|answer|pick\s*up|receive)\b/i;
   const REJECT_RE = /\b(reject|decline|hang\s*up|ignore|end)\b/i;
+  // VaxPhone uses <input id="BtnAccept"> / <input id="BtnReject"> inside
+  // #incomingModal. Match the id/name/value directly.
+  const ID_ACCEPT_RE = /btn[_-]?accept|^accept$|answer/i;
+  const ID_REJECT_RE = /btn[_-]?reject|^reject$|decline|hangup/i;
 
   function normalizePhone(input) {
     if (input == null) return '';
@@ -72,12 +93,21 @@
       const p = extractPhoneFromText(node.textContent);
       if (p) return { ...p, container: node };
     }
-    // Last resort: scan every visible select/option in the whole document.
+    // Last resort: scan every select/option in the whole document. We
+    // intentionally do NOT require the select to be visible \u2014 VaxPhone uses
+    // a hidden <select id=\"ListIncomingCall\"> as a data store.
     const doc = el.ownerDocument || document;
-    for (const opt of doc.querySelectorAll('select option')) {
-      if (!isVisible(opt.parentElement)) continue;
-      const p = extractPhoneFromText(opt.textContent);
-      if (p) return { ...p, container: opt.parentElement, source: opt };
+    for (const sel of doc.querySelectorAll('select')) {
+      for (const opt of sel.options || []) {
+        const p = extractPhoneFromText(opt.textContent);
+        if (p) return { ...p, container: sel.parentElement || sel, source: opt };
+      }
+    }
+    // And as the very last resort, scan any visible incoming-call modal text.
+    const modal = doc.getElementById('incomingModal') || doc.querySelector('.modal.show, [id*=\"ncoming\" i]');
+    if (modal) {
+      const p = extractPhoneFromText(modal.textContent);
+      if (p) return { ...p, container: modal };
     }
     return null;
   }
@@ -124,16 +154,22 @@
   function hook(btn, kind) {
     if (!btn || btn.getAttribute(ATTR_HOOKED) === kind) return;
     btn.setAttribute(ATTR_HOOKED, kind);
-    btn.addEventListener(
-      'click',
-      () => {
-        // Re-resolve number at click time (DOM may have updated).
-        const info = findNumberNear(btn) || readStoredNumber(btn);
-        if (!info || !info.digits) return;
-        send({ type: kind === 'accept' ? 'callAccepted' : 'callRejected', number: info.digits });
-      },
-      true
-    );
+    dbg('hook', kind, btn.tagName + (btn.id ? '#' + btn.id : ''), 'value=', btn.value || '', 'storedNum=', btn.getAttribute(ATTR_NUM));
+    let lastFiredAt = 0;
+    const fire = (ev) => {
+      const now = Date.now();
+      if (now - lastFiredAt < 800) return; // dedupe pointerdown/mousedown/click
+      lastFiredAt = now;
+      const info = findNumberNear(btn) || readStoredNumber(btn);
+      dbg(kind + ' fired (' + ev.type + ') number=', info && info.digits);
+      if (!info || !info.digits) return;
+      send({ type: kind === 'accept' ? 'callAccepted' : 'callRejected', number: info.digits });
+    };
+    // Listen on multiple events because VaxPhone may dispatch synthetic clicks
+    // or handle pointerdown/mousedown before click bubbles.
+    btn.addEventListener('click', fire, true);
+    btn.addEventListener('mousedown', fire, true);
+    btn.addEventListener('pointerdown', fire, true);
   }
 
   function readStoredNumber(btn) {
@@ -142,39 +178,53 @@
   }
 
   function classify(el) {
-    const txt = (el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || '')
-      .trim()
-      .slice(0, 60);
-    if (!txt) {
-      // Buttons may be icon-only; check title / aria-label / class hints.
-      const hint =
-        (el.getAttribute('aria-label') || '') + ' ' + (el.className || '') + ' ' + (el.id || '');
-      if (/accept|answer/i.test(hint)) return 'accept';
-      if (/reject|decline|hang/i.test(hint)) return 'reject';
-      return null;
+    // Identity hints first — works for icon-only / value-only buttons like
+    // <input id="BtnAccept" value="Accept">.
+    const ident = [
+      el.id || '',
+      el.name || '',
+      el.value || '',
+      el.getAttribute('aria-label') || '',
+      el.title || '',
+      el.className || ''
+    ].join(' ');
+    if (ID_ACCEPT_RE.test(ident)) return 'accept';
+    if (ID_REJECT_RE.test(ident)) return 'reject';
+
+    const txt = (el.innerText || el.textContent || '').trim().slice(0, 60);
+    if (txt) {
+      if (ACCEPT_RE.test(txt)) return 'accept';
+      if (REJECT_RE.test(txt)) return 'reject';
     }
-    if (ACCEPT_RE.test(txt)) return 'accept';
-    if (REJECT_RE.test(txt)) return 'reject';
     return null;
   }
 
   function scanDoc(doc) {
     if (!doc) return;
-    // Candidates: buttons, anchors, role=button. Limit to visible ones.
+    // Candidates: buttons, anchors, role=button, plus <input> (VaxPhone uses
+    // <input id="BtnAccept">). Limit to visible ones.
     const candidates = doc.querySelectorAll(
-      'button, a, [role="button"], .btn, [onclick]'
+      'button, a, [role="button"], .btn, [onclick], input[type="button"], input[type="submit"], input[type="image"], input[id], input[name]'
     );
+    let matched = 0;
     for (const el of candidates) {
       if (!isVisible(el)) continue;
       const kind = classify(el);
       if (!kind) continue;
+      matched++;
       const info = findNumberNear(el);
+      dbg('scan match', kind, el.tagName + (el.id ? '#' + el.id : ''), 'number=', info && info.digits);
       if (info) {
         // Stash digits on the button so click handler can recover them.
         el.setAttribute(ATTR_NUM, info.digits);
         if (kind === 'accept') decorate(el, info);
       }
       hook(el, kind);
+    }
+    if (DBG && matched === 0) {
+      // Useful breadcrumb when nothing matched.
+      const ba = doc.getElementById && doc.getElementById('BtnAccept');
+      if (ba) dbg('BtnAccept exists but did not match. visible=', isVisible(ba), 'id=', ba.id, 'value=', ba.value);
     }
   }
 
@@ -294,24 +344,30 @@
     healBusy = true;
     try {
       const doc = getWebPhoneDoc();
+      dbg('heal tick. webphone doc?', !!doc);
       if (!doc) return;
       const settingsTab = findSettingsTab(doc);
+      dbg('heal: settings tab found?', !!settingsTab);
       if (settingsTab) {
         settingsTab.click();
         await sleep(450);
       }
       const latest = readLogLatestLine(doc);
+      dbg('heal: latest log line =', JSON.stringify(latest));
       if (!latest) return;
       if (/Connection closed to Server WebRTC/i.test(latest)) {
         const btn = findRestartButton();
+        dbg('heal: restart btn found?', !!btn, btn && btn.outerHTML && btn.outerHTML.slice(0, 120));
         if (btn) {
           btn.click();
           const ok = await waitForSwalConfirm(4000);
+          dbg('heal: swal confirm found?', !!ok);
           if (ok) ok.click();
         }
       } else if (/Success to connect to Server WebRTC/i.test(latest)) {
         // Already connected — return to the phone tab so the user sees the dialer.
         const phoneTab = findPhoneTab(doc);
+        dbg('heal: phone tab found?', !!phoneTab);
         if (phoneTab) phoneTab.click();
       }
       lastHealAt = Date.now();
@@ -328,6 +384,9 @@
     if (healTimer) { clearInterval(healTimer); healTimer = null; }
     if (!s.autoHealEnabled) return;
     const ms = Math.max(10, Math.min(3600, s.autoHealIntervalSec || 60)) * 1000;
+    // Fire one immediate tick so the user sees activity right away after
+    // toggling the setting on (don't make them wait a full interval).
+    setTimeout(healTick, 1500);
     healTimer = setInterval(healTick, ms);
   }
 

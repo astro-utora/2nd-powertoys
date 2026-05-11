@@ -19,7 +19,10 @@ const DEFAULT_SETTINGS = {
   missedScanIntervalMin: 15
 };
 const MISSED_ALARM = 'tn-missed-scan';
-const CALLLOG_URL = 'https://www.2ndnumber.tel/app/calllog.php';
+const CALLLOG_URLS = [
+  'https://www.2ndnumber.tel/app/calllog.php',
+  'https://2ndnumber.tel/app/calllog.php'
+];
 const MATCH_TOLERANCE_MS = 3 * 60 * 1000;
 
 async function getSettings() {
@@ -346,19 +349,23 @@ function parseLogDate(s) {
 
 async function scanMissedCalls() {
   let html;
-  try {
-    const resp = await fetch(CALLLOG_URL, { credentials: 'include', cache: 'no-store' });
-    if (!resp.ok) return { ok: false, error: 'HTTP ' + resp.status };
-    html = await resp.text();
-  } catch (err) {
-    return { ok: false, error: String(err && err.message || err) };
+  let lastErr = null;
+  for (const url of CALLLOG_URLS) {
+    try {
+      const resp = await fetch(url, { credentials: 'include', cache: 'no-store' });
+      if (!resp.ok) { lastErr = 'HTTP ' + resp.status; continue; }
+      const body = await resp.text();
+      if (/dtBasicExample/i.test(body)) { html = body; break; }
+      lastErr = /name=["']?(username|password)["']?/i.test(body) ? 'Not signed in' : 'Unexpected response';
+    } catch (err) {
+      lastErr = String(err && err.message || err);
+    }
   }
-  // Detect login redirect.
-  if (/name=["']?(username|password)["']?/i.test(html) && !/dtBasicExample/i.test(html)) {
-    return { ok: false, error: 'Not signed in' };
-  }
+  if (!html) return { ok: false, error: lastErr || 'No call log response' };
   const rows = parseCallLogRows(html);
+  console.log('[2ndNumber] scanMissed: parsed', rows.length, 'rows total');
   const inbound = rows.filter((r) => r.direction === 'inbound');
+  console.log('[2ndNumber] scanMissed:', inbound.length, 'inbound rows');
   const history = await getHistory();
   const seenMissed = new Set(
     history
@@ -366,13 +373,15 @@ async function scanMissedCalls() {
       .map((h) => `${h.normalized}|${h.sourceTime}`)
   );
   let added = 0;
+  let dupMissed = 0;
+  let matchedAccepted = 0;
   for (const row of inbound) {
     const ts = parseLogDate(row.date);
-    if (!ts) continue;
+    if (!ts) { console.log('[2ndNumber] bad date', row.date); continue; }
     const norm = TN.normalizePhone(row.caller);
-    if (!norm) continue;
+    if (!norm) { console.log('[2ndNumber] bad caller', row.caller); continue; }
     const key = `${norm}|${row.date}`;
-    if (seenMissed.has(key)) continue;
+    if (seenMissed.has(key)) { dupMissed++; continue; }
     // Already recorded as accepted/rejected within tolerance window?
     const matched = history.some((h) =>
       (h.action === 'accepted' || h.action === 'rejected') &&
@@ -380,7 +389,7 @@ async function scanMissedCalls() {
       typeof h.timestamp === 'number' &&
       Math.abs(h.timestamp - ts) <= MATCH_TOLERANCE_MS
     );
-    if (matched) continue;
+    if (matched) { matchedAccepted++; continue; }
     const contact = await findContactByNumber(row.caller);
     history.push({
       id: TN.uuid(),
@@ -402,7 +411,7 @@ async function scanMissedCalls() {
     if (history.length > HISTORY_CAP) history.length = HISTORY_CAP;
     await setHistory(history);
   }
-  return { ok: true, added, scanned: inbound.length };
+  return { ok: true, added, scanned: inbound.length, totalRows: rows.length, dupMissed, matchedAccepted };
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {

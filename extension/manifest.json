@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "Contacts manager and caller-ID overlay for 2ndnumber.tel — match incoming calls to your saved contacts.",
   "permissions": ["storage", "activeTab", "alarms"],
-  "host_permissions": ["https://www.2ndnumber.tel/*"],
+  "host_permissions": [
+    "https://www.2ndnumber.tel/*",
+    "https://2ndnumber.tel/*"
+  ],
   "action": {
     "default_title": "2ndNumber Contacts",
     "default_popup": "popup/popup.html",
@@ -28,7 +31,9 @@
     {
       "matches": [
         "https://www.2ndnumber.tel/app/*",
-        "https://www.2ndnumber.tel/WebPhone/*"
+        "https://www.2ndnumber.tel/WebPhone/*",
+        "https://2ndnumber.tel/app/*",
+        "https://2ndnumber.tel/WebPhone/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle",

@@ -266,7 +266,11 @@
       toast(resp && resp.error ? `Scan failed · ${resp.error}` : 'Scan failed');
       return;
     }
-    toast(`Scan complete · ${resp.added} missed added (of ${resp.scanned})`);
+    const extra = (resp.totalRows != null)
+      ? ` · ${resp.totalRows} rows total, ${resp.dupMissed} dup, ${resp.matchedAccepted} matched`
+      : '';
+    toast(`Scan complete · ${resp.added} added of ${resp.scanned}${extra}`);
+    console.log('[2ndNumber] scanMissedNow resp', resp);
   }
 
   function bind() {
