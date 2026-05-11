@@ -86,7 +86,17 @@
   }
 
   function historyHtml(h) {
-    const title = h.contactName ? h.contactName : TN.formatPhone(h.number);
+    // Always re-resolve against the current contacts list. `h.contactName`
+    // is a snapshot from record time and can be stale — the contact may
+    // have been deleted (in which case we should fall back to showing the
+    // phone number only) or renamed (show the current name).
+    let contactName = null;
+    if (h.number) {
+      const norm = TN.normalizePhone(h.number);
+      const match = state.contacts.find((c) => TN.normalizePhone(c.phone) === norm);
+      if (match) contactName = match.name;
+    }
+    const title = contactName ? contactName : TN.formatPhone(h.number);
     const label = h.action === 'accepted' ? 'Accepted'
       : h.action === 'rejected' ? 'Rejected'
       : h.action === 'missed' ? 'Missed'
@@ -94,7 +104,7 @@
     const dur = (typeof h.durationSecs === 'number' && h.durationSecs > 0)
       ? ` · ${h.durationSecs}s`
       : '';
-    const sub = (h.contactName ? `${TN.formatPhone(h.number)} · ` : '') +
+    const sub = (contactName ? `${TN.formatPhone(h.number)} · ` : '') +
       `${label}${dur} · ${TN.timeAgo(h.timestamp)}`;
     return `
       <div class="history-row">
