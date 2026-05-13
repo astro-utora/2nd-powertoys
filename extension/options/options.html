@@ -34,55 +34,102 @@
         <div class="muted small" id="countBadge"></div>
       </section>
 
-      <section class="settings-card" id="settingsCard">
-        <div class="settings-head">
-          <div>
-            <div class="settings-title">WebPhone auto-heal</div>
-            <div class="settings-sub muted small">Periodically opens the webphone settings tab and reconnects the SIP server if it dropped.</div>
+      <details class="settings-section" id="settingsSection">
+        <summary class="settings-summary">
+          <div class="settings-summary-main">
+            <svg class="settings-summary-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="settings-summary-title">Settings</span>
+            <span class="settings-summary-sub muted small" id="settingsSummarySub">Display, auto-heal, missed-call scanner</span>
           </div>
-        </div>
-        <div class="settings-row">
-          <label class="switch">
-            <input type="checkbox" id="autoHealEnabled" />
-            <span class="switch-slider"></span>
-            <span class="switch-label">Enable auto-heal</span>
-          </label>
-          <label class="field inline">
-            <span>Check every</span>
-            <input id="autoHealIntervalSec" type="number" min="10" max="3600" step="5" />
-            <span class="muted small">seconds</span>
-          </label>
-          <button class="btn btn-primary btn-sm" id="saveSettingsBtn">Save settings</button>
-        </div>
-      </section>
+          <svg class="settings-summary-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
 
-      <section class="settings-card" id="missedCard">
-        <div class="settings-head">
-          <div>
-            <div class="settings-title">Missed-call scanner</div>
-            <div class="settings-sub muted small">Periodically reads <code>/app/calllog.php</code> and records any inbound calls you didn't accept or reject as "Missed".</div>
-          </div>
+        <div class="settings-grid">
+
+          <section class="settings-card" id="displayCard">
+            <div class="settings-card-head">
+              <div class="settings-icon settings-icon-primary" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+              </div>
+              <div class="settings-card-text">
+                <div class="settings-title">Display mode</div>
+                <div class="settings-sub muted small">Show as a persistent right-hand <strong>side panel</strong> (like MetaMask / Ronin) instead of the default popup.</div>
+              </div>
+              <span class="status-pill" data-status-for="sidebarMode">Off</span>
+            </div>
+            <div class="settings-row">
+              <label class="switch">
+                <input type="checkbox" id="sidebarMode" data-autosave />
+                <span class="switch-slider"></span>
+                <span class="switch-label">Open as side panel</span>
+              </label>
+              <div class="spacer"></div>
+              <button class="btn btn-ghost btn-sm" id="openSidebarNow" type="button">Open side panel now</button>
+            </div>
+          </section>
+
+          <section class="settings-card" id="settingsCard">
+            <div class="settings-card-head">
+              <div class="settings-icon settings-icon-success" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.35 1.84.59 2.8.72A2 2 0 0 1 22 16.92z"/></svg>
+              </div>
+              <div class="settings-card-text">
+                <div class="settings-title">WebPhone auto-heal</div>
+                <div class="settings-sub muted small">Periodically opens the webphone settings tab and reconnects the SIP server if it dropped.</div>
+              </div>
+              <span class="status-pill" data-status-for="autoHealEnabled">Off</span>
+            </div>
+            <div class="settings-row">
+              <label class="switch">
+                <input type="checkbox" id="autoHealEnabled" data-autosave />
+                <span class="switch-slider"></span>
+                <span class="switch-label">Enable auto-heal</span>
+              </label>
+              <label class="field inline">
+                <span>Check every</span>
+                <input id="autoHealIntervalSec" type="number" min="10" max="3600" step="5" data-autosave />
+                <span class="muted small">seconds</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-card" id="missedCard">
+            <div class="settings-card-head">
+              <div class="settings-icon settings-icon-warning" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.35 1.84.59 2.8.72A2 2 0 0 1 22 16.92z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>
+              </div>
+              <div class="settings-card-text">
+                <div class="settings-title">Missed-call scanner</div>
+                <div class="settings-sub muted small">Periodically reads <code>/app/calllog.php</code> and records inbound calls you didn't accept or reject as "Missed".</div>
+              </div>
+              <span class="status-pill" data-status-for="missedScanEnabled">Off</span>
+            </div>
+            <div class="settings-row">
+              <label class="switch">
+                <input type="checkbox" id="missedScanEnabled" data-autosave />
+                <span class="switch-slider"></span>
+                <span class="switch-label">Enable scanner</span>
+              </label>
+              <label class="field inline">
+                <span>Check every</span>
+                <input id="missedScanIntervalMin" type="number" min="1" max="1440" step="1" data-autosave />
+                <span class="muted small">minutes</span>
+              </label>
+              <div class="spacer"></div>
+              <button class="btn btn-ghost btn-sm" id="scanNowBtn">Scan now</button>
+            </div>
+          </section>
+
         </div>
-        <div class="settings-row">
-          <label class="switch">
-            <input type="checkbox" id="missedScanEnabled" />
-            <span class="switch-slider"></span>
-            <span class="switch-label">Enable scanner</span>
-          </label>
-          <label class="field inline">
-            <span>Check every</span>
-            <input id="missedScanIntervalMin" type="number" min="1" max="1440" step="1" />
-            <span class="muted small">minutes</span>
-          </label>
-          <button class="btn btn-ghost btn-sm" id="scanNowBtn">Scan now</button>
-        </div>
-      </section>
+        <div class="settings-savehint muted small" id="settingsSaveHint" aria-live="polite">Changes save automatically.</div>
+      </details>
 
       <div class="table-wrap">
         <table class="table" id="contactsTable">
           <thead>
             <tr>
               <th>Name</th>
+              <th>Title</th>
               <th>Phone</th>
               <th>Role</th>
               <th>Company</th>
@@ -116,6 +163,7 @@
         <label class="field"><span>Role</span>
           <select name="role"><option value="">—</option><option value="recruiter">Recruiter</option><option value="hiring_manager">Hiring Manager</option></select>
         </label>
+        <label class="field"><span>Title</span><input name="title" type="text" placeholder="e.g. Senior Software Engineer" /></label>
         <label class="field"><span>Company</span><input name="company" type="text" /></label>
         <label class="field"><span>Client name</span><input name="clientName" type="text" /></label>
         <div class="field-row">

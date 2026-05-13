@@ -62,6 +62,12 @@
           <div class="muted small" id="historyCount"></div>
           <button class="btn btn-ghost btn-sm" id="clearHistory">Clear all</button>
         </div>
+        <div class="filters" role="tablist" aria-label="History filter">
+          <button class="filter-pill active" data-filter="all" type="button">All</button>
+          <button class="filter-pill" data-filter="accepted" type="button">Accepted</button>
+          <button class="filter-pill" data-filter="rejected" type="button">Rejected</button>
+          <button class="filter-pill" data-filter="missed" type="button">Missed</button>
+        </div>
         <div class="list" id="historyList"></div>
         <div class="empty hidden" id="historyEmpty">
           <div class="empty-emoji">🔕</div>
@@ -99,6 +105,10 @@
             <option value="recruiter">Recruiter</option>
             <option value="hiring_manager">Hiring Manager</option>
           </select>
+        </label>
+        <label class="field">
+          <span>Title</span>
+          <input name="title" type="text" placeholder="e.g. Senior Software Engineer" />
         </label>
         <label class="field">
           <span>Company</span>

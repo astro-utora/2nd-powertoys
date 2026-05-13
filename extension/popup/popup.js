@@ -11,7 +11,8 @@
     history: [],
     pendingNumber: null,
     search: '',
-    tab: 'contacts'
+    tab: 'contacts',
+    historyFilter: 'all'
   };
 
   function send(msg) {
@@ -63,7 +64,7 @@
     if (c.round) tags.push(`<span class="tag tag-round">R${c.round}</span>`);
     if (c.company) tags.push(`<span class="tag">${TN.escapeHtml(c.company)}</span>`);
 
-    const meta = [c.phoneDisplay || TN.formatPhone(c.phone), c.clientName].filter(Boolean);
+    const meta = [c.phoneDisplay || TN.formatPhone(c.phone), c.title, c.clientName].filter(Boolean);
 
     return `
       <div class="card" data-id="${TN.escapeHtml(c.id)}">
@@ -78,11 +79,15 @@
 
   function renderHistory() {
     const list = $('#historyList');
-    $('#historyEmpty').classList.toggle('hidden', state.history.length > 0);
-    $('#historyCount').textContent = state.history.length
-      ? `${state.history.length} entr${state.history.length === 1 ? 'y' : 'ies'}`
+    const filter = state.historyFilter;
+    const items = filter === 'all'
+      ? state.history
+      : state.history.filter((h) => h.action === filter);
+    $('#historyEmpty').classList.toggle('hidden', items.length > 0);
+    $('#historyCount').textContent = items.length
+      ? `${items.length} entr${items.length === 1 ? 'y' : 'ies'}${filter === 'all' ? '' : ' · ' + filter}`
       : '';
-    list.innerHTML = state.history.map(historyHtml).join('');
+    list.innerHTML = items.map(historyHtml).join('');
   }
 
   function historyHtml(h) {
@@ -152,6 +157,7 @@
     form.elements.id.value = contact ? contact.id : '';
     form.elements.phone.value = contact ? (contact.phoneDisplay || TN.formatPhone(contact.phone)) : (drawer.dataset.prefillPhone || '');
     form.elements.name.value = contact ? contact.name : '';
+    form.elements.title.value = contact ? (contact.title || '') : '';
     form.elements.role.value = contact ? (contact.role || '') : '';
     form.elements.company.value = contact ? (contact.company || '') : '';
     form.elements.clientName.value = contact ? (contact.clientName || '') : '';
@@ -179,6 +185,7 @@
       id: form.elements.id.value || undefined,
       phone: form.elements.phone.value,
       name: form.elements.name.value.trim(),
+      title: form.elements.title.value.trim(),
       role: form.elements.role.value,
       company: form.elements.company.value.trim(),
       clientName: form.elements.clientName.value.trim(),
@@ -248,6 +255,11 @@
 
   function bind() {
     $$('.tab').forEach((t) => t.addEventListener('click', () => setTab(t.dataset.tab)));
+    $$('.filter-pill').forEach((p) => p.addEventListener('click', () => {
+      state.historyFilter = p.dataset.filter;
+      $$('.filter-pill').forEach((x) => x.classList.toggle('active', x === p));
+      renderHistory();
+    }));
     $('#newContact').addEventListener('click', () => openDrawer(null));
     $('#closeDrawer').addEventListener('click', closeDrawer);
     $('#cancelDrawer').addEventListener('click', closeDrawer);
@@ -282,6 +294,11 @@
   }
 
   async function init() {
+    // Sidebar/side-panel layout tweak.
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get('mode') === 'sidebar') document.body.classList.add('mode-sidebar');
+    } catch (_) { /* ignore */ }
     bind();
     await Promise.all([loadContacts(), loadPending()]);
   }

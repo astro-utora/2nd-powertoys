@@ -16,7 +16,8 @@ const DEFAULT_SETTINGS = {
   autoHealEnabled: false,
   autoHealIntervalSec: 60,
   missedScanEnabled: false,
-  missedScanIntervalMin: 15
+  missedScanIntervalMin: 15,
+  sidebarMode: false
 };
 const MISSED_ALARM = 'tn-missed-scan';
 const CALLLOG_URLS = [
@@ -42,9 +43,28 @@ async function saveSettings(patch) {
   }
   next.missedScanIntervalMin = Math.max(1, Math.min(1440, Math.round(next.missedScanIntervalMin)));
   next.missedScanEnabled = !!next.missedScanEnabled;
+  next.sidebarMode = !!next.sidebarMode;
   await chrome.storage.local.set({ [STORAGE_KEYS.settings]: next });
   await rescheduleMissedAlarm(next);
+  await applySidebarMode(next.sidebarMode);
   return next;
+}
+
+async function applySidebarMode(enabled) {
+  try {
+    if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+      await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: !!enabled });
+    }
+    // When sidebar mode is on, clearing the popup makes clicks open the side panel.
+    // When off, restore the default popup.
+    if (enabled) {
+      await chrome.action.setPopup({ popup: '' });
+    } else {
+      await chrome.action.setPopup({ popup: 'popup/popup.html' });
+    }
+  } catch (err) {
+    console.warn('[2ndNumber] applySidebarMode failed', err);
+  }
 }
 
 async function rescheduleMissedAlarm(settings) {
@@ -100,6 +120,7 @@ async function upsertContact(draft) {
       ...draft,
       phone: normalized,
       phoneDisplay: TN.formatPhone(draft.phone),
+      title: draft.title || '',
       updatedAt: now
     };
   } else {
@@ -108,6 +129,7 @@ async function upsertContact(draft) {
       name: String(draft.name).trim(),
       phone: normalized,
       phoneDisplay: TN.formatPhone(draft.phone),
+      title: draft.title || '',
       role: draft.role || '',
       company: draft.company || '',
       clientName: draft.clientName || '',
@@ -261,6 +283,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             const draft = {
               name: String(raw.name || '').trim(),
               phone: raw.phone,
+              title: raw.title || '',
               role: raw.role || '',
               company: raw.company || '',
               clientName: raw.clientName || '',
@@ -307,13 +330,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true; // async
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   setBadge('', '#4F46E5');
   rescheduleMissedAlarm();
+  const s = await getSettings();
+  applySidebarMode(s.sidebarMode);
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   rescheduleMissedAlarm();
+  const s = await getSettings();
+  applySidebarMode(s.sidebarMode);
 });
 
 // ---------------- Missed-call scanner ----------------

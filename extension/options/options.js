@@ -30,6 +30,7 @@
       if (!q) return true;
       return (
         (c.name || '').toLowerCase().includes(q) ||
+        (c.title || '').toLowerCase().includes(q) ||
         (qDigits && (c.phone || '').includes(qDigits)) ||
         (c.phoneDisplay || '').toLowerCase().includes(q) ||
         (c.company || '').toLowerCase().includes(q) ||
@@ -49,6 +50,7 @@
             <span>${TN.escapeHtml(c.name)}</span>
           </div>
         </td>
+        <td>${TN.escapeHtml(c.title || '—')}</td>
         <td>${TN.escapeHtml(c.phoneDisplay || TN.formatPhone(c.phone))}</td>
         <td>${TN.escapeHtml(TN.roleLabel(c.role) || '—')}</td>
         <td>${TN.escapeHtml(c.company || '—')}</td>
@@ -91,6 +93,7 @@
     form.elements.id.value = contact ? contact.id : '';
     form.elements.phone.value = contact ? (contact.phoneDisplay || TN.formatPhone(contact.phone)) : '';
     form.elements.name.value = contact ? contact.name : '';
+    form.elements.title.value = contact ? (contact.title || '') : '';
     form.elements.role.value = contact ? (contact.role || '') : '';
     form.elements.company.value = contact ? (contact.company || '') : '';
     form.elements.clientName.value = contact ? (contact.clientName || '') : '';
@@ -113,6 +116,7 @@
       id: form.elements.id.value || undefined,
       phone: form.elements.phone.value,
       name: form.elements.name.value.trim(),
+      title: form.elements.title.value.trim(),
       role: form.elements.role.value,
       company: form.elements.company.value.trim(),
       clientName: form.elements.clientName.value.trim(),
@@ -159,7 +163,7 @@
     download('2ndnumber-contacts.json', JSON.stringify(data, null, 2), 'application/json');
   }
 
-  const CSV_COLS = ['name', 'phone', 'role', 'company', 'clientName', 'step', 'round'];
+  const CSV_COLS = ['name', 'title', 'phone', 'role', 'company', 'clientName', 'step', 'round'];
   function csvEscape(v) {
     const s = v == null ? '' : String(v);
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -236,6 +240,28 @@
     $('#autoHealIntervalSec').value = s.autoHealIntervalSec ?? 60;
     $('#missedScanEnabled').checked = !!s.missedScanEnabled;
     $('#missedScanIntervalMin').value = s.missedScanIntervalMin ?? 15;
+    $('#sidebarMode').checked = !!s.sidebarMode;
+    refreshSettingsUi(s);
+  }
+
+  function refreshSettingsUi(s) {
+    const map = {
+      sidebarMode: !!s.sidebarMode,
+      autoHealEnabled: !!s.autoHealEnabled,
+      missedScanEnabled: !!s.missedScanEnabled
+    };
+    Object.entries(map).forEach(([k, on]) => {
+      const pill = document.querySelector(`[data-status-for="${k}"]`);
+      if (pill) { pill.textContent = on ? 'On' : 'Off'; pill.classList.toggle('on', on); }
+    });
+    const sub = $('#settingsSummarySub');
+    if (sub) {
+      const active = [];
+      if (map.sidebarMode) active.push('Side panel');
+      if (map.autoHealEnabled) active.push('Auto-heal');
+      if (map.missedScanEnabled) active.push('Missed scan');
+      sub.textContent = active.length ? `Active: ${active.join(' · ')}` : 'All features off';
+    }
   }
 
   async function saveSettingsClick() {
@@ -243,16 +269,31 @@
       autoHealEnabled: $('#autoHealEnabled').checked,
       autoHealIntervalSec: parseInt($('#autoHealIntervalSec').value, 10) || 60,
       missedScanEnabled: $('#missedScanEnabled').checked,
-      missedScanIntervalMin: parseInt($('#missedScanIntervalMin').value, 10) || 15
+      missedScanIntervalMin: parseInt($('#missedScanIntervalMin').value, 10) || 15,
+      sidebarMode: $('#sidebarMode').checked
     };
     const resp = await send({ type: 'saveSettings', patch });
     if (resp && resp.ok) {
       $('#autoHealIntervalSec').value = resp.settings.autoHealIntervalSec;
       $('#missedScanIntervalMin').value = resp.settings.missedScanIntervalMin;
-      toast('Settings saved');
-    } else {
-      toast('Could not save settings');
+      refreshSettingsUi(resp.settings);
+      flashSaveHint();
+      return resp.settings;
     }
+    toast('Could not save settings');
+    return null;
+  }
+
+  function flashSaveHint() {
+    const hint = $('#settingsSaveHint');
+    if (!hint) return;
+    hint.textContent = 'Saved';
+    hint.classList.add('saved');
+    clearTimeout(flashSaveHint._t);
+    flashSaveHint._t = setTimeout(() => {
+      hint.textContent = 'Changes save automatically.';
+      hint.classList.remove('saved');
+    }, 1400);
   }
 
   async function scanNowClick() {
@@ -290,8 +331,30 @@
       if (f) handleImport(f);
       e.target.value = '';
     });
-    $('#saveSettingsBtn').addEventListener('click', saveSettingsClick);
+    $('#saveSettingsBtn')?.addEventListener('click', saveSettingsClick);
     $('#scanNowBtn').addEventListener('click', scanNowClick);
+    // Auto-save on any settings change.
+    document.querySelectorAll('[data-autosave]').forEach((el) => {
+      const ev = el.type === 'checkbox' ? 'change' : 'change';
+      el.addEventListener(ev, saveSettingsClick);
+      if (el.type === 'number') el.addEventListener('blur', saveSettingsClick);
+    });
+    $('#sidebarMode').removeEventListener?.('change', () => {});
+    $('#sidebarMode').addEventListener('change', () => {
+      // status pill update is handled by saveSettingsClick → refreshSettingsUi
+    });
+    $('#openSidebarNow').addEventListener('click', async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (chrome.sidePanel && chrome.sidePanel.open) {
+          await chrome.sidePanel.open(tab ? { tabId: tab.id, windowId: tab.windowId } : { windowId: chrome.windows.WINDOW_ID_CURRENT });
+        } else {
+          toast('Side panel API unavailable');
+        }
+      } catch (err) {
+        toast('Open from a browser tab: click the toolbar icon');
+      }
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !$('#drawer').classList.contains('hidden')) closeDrawer();
     });

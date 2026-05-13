@@ -37,6 +37,16 @@
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
 body { width: 380px; min-height: 480px; }
 
+/* When loaded inside the side panel, fill the panel width instead of the
+   fixed popup width. */
+body.mode-sidebar { width: 100%; min-height: 100vh; }
+body.mode-sidebar .app { min-height: 100vh; }
+body.mode-sidebar .list { max-height: calc(100vh - 260px); }
+body.mode-sidebar .drawer {
+  position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+  max-height: 92vh;
+}
+
 .hidden { display: none !important; }
 .muted { color: var(--muted); }
 .small { font-size: 11px; }
@@ -152,6 +162,21 @@ body { width: 380px; min-height: 480px; }
 .tag.tag-role { background: var(--primary-50); color: var(--primary); }
 .tag.tag-step { background: rgba(16,185,129,.12); color: var(--success); }
 .tag.tag-round { background: rgba(245,158,11,.12); color: var(--warning); }
+
+/* History filter pills */
+.filters {
+  display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.filter-pill {
+  padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--muted);
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all .12s ease;
+}
+.filter-pill:hover { color: var(--text); border-color: var(--primary); }
+.filter-pill.active {
+  background: var(--primary-50); color: var(--primary); border-color: var(--primary);
+}
 
 /* History row */
 .history-row {
