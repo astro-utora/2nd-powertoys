@@ -12,8 +12,43 @@
     pendingNumber: null,
     search: '',
     tab: 'contacts',
-    historyFilter: 'all'
+    historyFilter: 'all',
+    contactsPage: 1,
+    historyPage: 1
   };
+
+  const PAGE_SIZE = 10;
+
+  function clampPage(page, total) {
+    const max = Math.max(1, total);
+    return Math.min(Math.max(1, page), max);
+  }
+
+  function renderPager(container, totalItems, currentPage, onChange) {
+    if (!container) return currentPage;
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    const page = clampPage(currentPage, totalPages);
+    if (totalItems <= PAGE_SIZE) {
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      return page;
+    }
+    container.classList.remove('hidden');
+    const from = (page - 1) * PAGE_SIZE + 1;
+    const to = Math.min(totalItems, page * PAGE_SIZE);
+    container.innerHTML = `
+      <button class="pager-btn" data-act="prev" ${page === 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>
+      <span class="pager-info">${from}–${to} of ${totalItems}</span>
+      <button class="pager-btn" data-act="next" ${page === totalPages ? 'disabled' : ''} aria-label="Next page">›</button>
+    `;
+    container.querySelector('[data-act="prev"]').addEventListener('click', () => {
+      onChange(Math.max(1, page - 1));
+    });
+    container.querySelector('[data-act="next"]').addEventListener('click', () => {
+      onChange(Math.min(totalPages, page + 1));
+    });
+    return page;
+  }
 
   function send(msg) {
     return new Promise((resolve) => {
@@ -62,7 +97,18 @@
     items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     $('#contactsEmpty').classList.toggle('hidden', items.length > 0);
-    list.innerHTML = items.map(cardHtml).join('');
+
+    const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+    state.contactsPage = clampPage(state.contactsPage, totalPages);
+    const start = (state.contactsPage - 1) * PAGE_SIZE;
+    const pageItems = items.slice(start, start + PAGE_SIZE);
+
+    list.innerHTML = pageItems.map(cardHtml).join('');
+    state.contactsPage = renderPager($('#contactsPager'), items.length, state.contactsPage, (p) => {
+      state.contactsPage = p;
+      renderContacts();
+      list.scrollTop = 0;
+    });
     list.querySelectorAll('.card').forEach((el) => {
       el.addEventListener('click', (e) => {
         if (e.target.closest('.call-btn')) return;
@@ -112,7 +158,18 @@
     $('#historyCount').textContent = items.length
       ? `${items.length} entr${items.length === 1 ? 'y' : 'ies'}${filter === 'all' ? '' : ' · ' + filter}`
       : '';
-    list.innerHTML = items.map(historyHtml).join('');
+
+    const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+    state.historyPage = clampPage(state.historyPage, totalPages);
+    const start = (state.historyPage - 1) * PAGE_SIZE;
+    const pageItems = items.slice(start, start + PAGE_SIZE);
+
+    list.innerHTML = pageItems.map(historyHtml).join('');
+    state.historyPage = renderPager($('#historyPager'), items.length, state.historyPage, (p) => {
+      state.historyPage = p;
+      renderHistory();
+      list.scrollTop = 0;
+    });
     list.querySelectorAll('.call-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -296,6 +353,7 @@
     $$('.tab').forEach((t) => t.addEventListener('click', () => setTab(t.dataset.tab)));
     $$('.filter-pill').forEach((p) => p.addEventListener('click', () => {
       state.historyFilter = p.dataset.filter;
+      state.historyPage = 1;
       $$('.filter-pill').forEach((x) => x.classList.toggle('active', x === p));
       renderHistory();
     }));
@@ -307,6 +365,7 @@
     $('#deleteContact').addEventListener('click', deleteCurrent);
     $('#searchInput').addEventListener('input', (e) => {
       state.search = e.target.value;
+      state.contactsPage = 1;
       renderContacts();
     });
     $('#openOptions').addEventListener('click', () => chrome.runtime.openOptionsPage());

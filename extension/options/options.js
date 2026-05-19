@@ -5,7 +5,58 @@
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 
-  const state = { contacts: [], search: '' };
+  const state = { contacts: [], search: '', page: 1 };
+  const PAGE_SIZE = 25;
+
+  function clampPage(page, totalPages) {
+    return Math.min(Math.max(1, page), Math.max(1, totalPages));
+  }
+
+  function renderPager(totalItems) {
+    const container = $('#contactsPager');
+    if (!container) return;
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    state.page = clampPage(state.page, totalPages);
+    if (totalItems <= PAGE_SIZE) {
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    const page = state.page;
+    const from = (page - 1) * PAGE_SIZE + 1;
+    const to = Math.min(totalItems, page * PAGE_SIZE);
+    // Build a compact numeric range: first, current ± 2, last with ellipses.
+    const pageNums = [];
+    const add = (n) => { if (!pageNums.includes(n) && n >= 1 && n <= totalPages) pageNums.push(n); };
+    add(1);
+    for (let i = page - 2; i <= page + 2; i++) add(i);
+    add(totalPages);
+    pageNums.sort((a, b) => a - b);
+    const numHtml = pageNums.map((n, i) => {
+      const gap = i > 0 && n - pageNums[i - 1] > 1 ? '<span class="pager-gap">…</span>' : '';
+      const cls = n === page ? 'pager-btn pager-num active' : 'pager-btn pager-num';
+      return `${gap}<button class="${cls}" data-page="${n}">${n}</button>`;
+    }).join('');
+    container.innerHTML = `
+      <button class="pager-btn" data-act="prev" ${page === 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>
+      ${numHtml}
+      <button class="pager-btn" data-act="next" ${page === totalPages ? 'disabled' : ''} aria-label="Next page">›</button>
+      <span class="pager-info">${from}–${to} of ${totalItems}</span>
+    `;
+    container.querySelector('[data-act="prev"]').addEventListener('click', () => {
+      state.page = Math.max(1, page - 1); render();
+    });
+    container.querySelector('[data-act="next"]').addEventListener('click', () => {
+      state.page = Math.min(totalPages, page + 1); render();
+    });
+    container.querySelectorAll('.pager-num').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.page = parseInt(btn.dataset.page, 10) || 1;
+        render();
+      });
+    });
+  }
 
   function send(msg) {
     return new Promise((resolve) => {
@@ -42,7 +93,12 @@
     $('#contactsEmpty').classList.toggle('hidden', state.contacts.length > 0);
     $('#contactsTable').classList.toggle('hidden', state.contacts.length === 0);
 
-    $('#contactsBody').innerHTML = items.map((c) => `
+    const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+    state.page = clampPage(state.page, totalPages);
+    const start = (state.page - 1) * PAGE_SIZE;
+    const pageItems = items.slice(start, start + PAGE_SIZE);
+
+    $('#contactsBody').innerHTML = pageItems.map((c) => `
       <tr data-id="${TN.escapeHtml(c.id)}">
         <td>${TN.escapeHtml(c.phoneDisplay || TN.formatPhone(c.phone))}</td>
         <td>
@@ -90,6 +146,8 @@
         });
       }
     });
+
+    renderPager(items.length);
   }
 
   // ---- Drawer (same shape as popup) ----
@@ -334,7 +392,7 @@
     $('#drawerScrim').addEventListener('click', closeDrawer);
     $('#contactForm').addEventListener('submit', submit);
     $('#deleteContact').addEventListener('click', deleteCurrent);
-    $('#searchInput').addEventListener('input', (e) => { state.search = e.target.value; render(); });
+    $('#searchInput').addEventListener('input', (e) => { state.search = e.target.value; state.page = 1; render(); });
     $('#exportJsonBtn').addEventListener('click', exportJson);
     $('#exportCsvBtn').addEventListener('click', exportCsv);
     $('#importBtn').addEventListener('click', () => $('#importFile').click());
