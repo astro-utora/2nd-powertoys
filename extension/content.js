@@ -299,6 +299,64 @@
         /* cross-origin, ignore */
       }
     }
+    detectRinging();
+  }
+
+  // -------- Ringing detection (Windows notification) --------
+  // Track which number we last announced so we don't spam notifications on
+  // every mutation while the incoming-call modal is open.
+  let lastRingDigits = null;
+  let ringingActive = false;
+
+  function isIncomingModalOpen(doc) {
+    const modal = doc.getElementById('incomingModal');
+    if (!modal) return false;
+    if (!isVisible(modal)) return false;
+    if (modal.getAttribute('aria-hidden') === 'true') return false;
+    const style = modal.getAttribute('style') || '';
+    if (/display\s*:\s*none/i.test(style)) return false;
+    return true;
+  }
+
+  function detectRinging() {
+    let open = false;
+    let digits = null;
+    const docs = [document];
+    for (const f of document.querySelectorAll('iframe')) {
+      try { if (f.contentDocument) docs.push(f.contentDocument); } catch (_) { /* ignore */ }
+    }
+    for (const d of docs) {
+      if (!isIncomingModalOpen(d)) continue;
+      open = true;
+      // Get caller number from the incoming-call select / modal text.
+      const modal = d.getElementById('incomingModal');
+      const info = findNumberNear(modal) ||
+        (() => {
+          const sel = d.getElementById('ListIncomingCall');
+          if (sel) {
+            for (const opt of sel.options || []) {
+              const p = extractPhoneFromText(opt.textContent);
+              if (p) return p;
+            }
+          }
+          return null;
+        })();
+      if (info && info.digits) digits = info.digits;
+      break;
+    }
+    if (open && digits) {
+      if (!ringingActive || lastRingDigits !== digits) {
+        ringingActive = true;
+        lastRingDigits = digits;
+        dbg('ringing detected', digits);
+        send({ type: 'callRinging', number: digits });
+      }
+    } else if (!open && ringingActive) {
+      ringingActive = false;
+      lastRingDigits = null;
+      dbg('ringing cleared');
+      send({ type: 'callRingingEnded' });
+    }
   }
 
   let scheduled = false;
@@ -508,6 +566,75 @@
     } catch (_) { /* ignore */ }
   }
 
+  // -------- Dial-from-extension support --------
+  // The popup/options pages send {type:'tnDial', number} to ask us to fill
+  // the WebPhone's number input and click the Dial button. The dialer lives
+  // inside the same-origin /WebPhone/ iframe, so we reach into it from the
+  // top /app/ frame.
+
+  function fillAndDial(doc, digits) {
+    if (!doc) return false;
+    const input = doc.getElementById('EditPhoneNo');
+    const dial = doc.getElementById('BtnDial');
+    if (!input || !dial) return false;
+    // If a call is already active, the Dial button reads "Hangup" — don't
+    // accidentally hang up an ongoing call.
+    if (/hang\s*up/i.test(dial.value || '')) {
+      dbg('dial skipped: call active');
+      return false;
+    }
+    try { input.focus(); } catch (_) {}
+    // Use native setter so frameworks (and VaxPhone's onchange) pick it up.
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      doc.defaultView.HTMLInputElement.prototype, 'value'
+    );
+    if (nativeSetter && nativeSetter.set) nativeSetter.set.call(input, digits);
+    else input.value = digits;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    // Click the dial button.
+    try { dial.click(); } catch (_) {
+      dial.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+    return true;
+  }
+
+  async function performDial(rawDigits) {
+    const digits = String(rawDigits || '').replace(/\D+/g, '');
+    if (!digits) return false;
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      // Try current document first (covers the case where the content
+      // script runs inside the /WebPhone/ iframe directly).
+      if (fillAndDial(document, digits)) return true;
+      // Then look for the same-origin WebPhone iframe from the /app/ frame.
+      const wpDoc = getWebPhoneDoc();
+      if (wpDoc && fillAndDial(wpDoc, digits)) return true;
+      // Scan any other same-origin iframe just in case.
+      for (const f of document.querySelectorAll('iframe')) {
+        try {
+          const d = f.contentDocument;
+          if (d && fillAndDial(d, digits)) return true;
+        } catch (_) { /* cross-origin */ }
+      }
+      await sleep(400);
+    }
+    return false;
+  }
+
+  function setupDialListener() {
+    try {
+      chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+        if (!msg || msg.type !== 'tnDial') return;
+        performDial(msg.number).then((ok) => {
+          try { sendResponse({ ok }); } catch (_) {}
+        });
+        return true; // async response
+      });
+    } catch (_) { /* extension context not ready */ }
+  }
+
   start();
   setupAutoHeal();
+  setupDialListener();
 })();

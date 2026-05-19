@@ -3,7 +3,7 @@
   "name": "2ndNumber Contacts",
   "version": "1.0.0",
   "description": "Contacts manager and caller-ID overlay for 2ndnumber.tel — match incoming calls to your saved contacts.",
-  "permissions": ["storage", "activeTab", "alarms", "sidePanel"],
+  "permissions": ["storage", "activeTab", "alarms", "sidePanel", "notifications"],
   "host_permissions": [
     "https://www.2ndnumber.tel/*",
     "https://2ndnumber.tel/*"

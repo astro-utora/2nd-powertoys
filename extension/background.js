@@ -25,6 +25,89 @@ const CALLLOG_URLS = [
   'https://2ndnumber.tel/app/calllog.php'
 ];
 const MATCH_TOLERANCE_MS = 3 * 60 * 1000;
+const RINGING_NOTIF_ID = 'tn-ringing';
+let lastRingingDigits = null;
+let lastRingingAt = 0;
+
+async function showRingingNotification(number) {
+  const digits = TN.normalizePhone(number);
+  if (!digits) return;
+  const now = Date.now();
+  // De-dup: same number within 30s = same ring sequence, don't re-notify.
+  if (digits === lastRingingDigits && (now - lastRingingAt) < 30000) {
+    lastRingingAt = now;
+    return;
+  }
+  lastRingingDigits = digits;
+  lastRingingAt = now;
+  const contact = await findContactByNumber(digits);
+  const title = contact ? `Incoming call · ${contact.name}` : 'Incoming call';
+  const body = contact
+    ? `${TN.formatPhone(digits)}${contact.company ? ' · ' + contact.company : ''}`
+    : TN.formatPhone(digits);
+  try {
+    await chrome.notifications.create(RINGING_NOTIF_ID, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title,
+      message: body,
+      priority: 2,
+      requireInteraction: true
+    });
+  } catch (err) {
+    console.warn('[2ndNumber] notification failed', err);
+  }
+}
+
+async function clearRingingNotification() {
+  try { await chrome.notifications.clear(RINGING_NOTIF_ID); } catch (_) { /* ignore */ }
+}
+
+const APP_URL_FILTERS = [
+  'https://www.2ndnumber.tel/app/*',
+  'https://2ndnumber.tel/app/*',
+  'https://www.2ndnumber.tel/WebPhone/*',
+  'https://2ndnumber.tel/WebPhone/*'
+];
+
+async function dialNumber(rawNumber) {
+  const digits = TN.normalizePhone(rawNumber);
+  if (!digits) return { ok: false, error: 'No number' };
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: APP_URL_FILTERS }); } catch (_) { /* ignore */ }
+  // Prefer an /app/ tab over a /WebPhone/ iframe tab.
+  tabs.sort((a, b) => {
+    const ap = /\/app\//.test(a.url || '') ? 0 : 1;
+    const bp = /\/app\//.test(b.url || '') ? 0 : 1;
+    return ap - bp;
+  });
+  let tab = tabs[0];
+  let created = false;
+  if (!tab) {
+    tab = await chrome.tabs.create({ url: 'https://www.2ndnumber.tel/app/' });
+    created = true;
+  } else {
+    try { await chrome.tabs.update(tab.id, { active: true }); } catch (_) {}
+    try { await chrome.windows.update(tab.windowId, { focused: true }); } catch (_) {}
+  }
+  // Send the dial command. If the tab is freshly created, retry until the
+  // content script is listening.
+  const send = () => new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tab.id, { type: 'tnDial', number: digits }, (resp) => {
+        void chrome.runtime.lastError;
+        resolve(resp || null);
+      });
+    } catch (_) { resolve(null); }
+  });
+  const maxAttempts = created ? 30 : 5;
+  for (let i = 0; i < maxAttempts; i++) {
+    const resp = await send();
+    if (resp && resp.ok) return { ok: true };
+    await new Promise((r) => setTimeout(r, created ? 500 : 200));
+  }
+  return { ok: true, queued: true };
+}
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get(STORAGE_KEYS.settings);
@@ -214,6 +297,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         case 'callAccepted': {
+          await clearRingingNotification();
+          lastRingingDigits = null;
           const contact = await findContactByNumber(msg.number);
           await recordHistory({
             number: msg.number,
@@ -236,6 +321,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         case 'callRejected': {
+          await clearRingingNotification();
+          lastRingingDigits = null;
           const contact = await findContactByNumber(msg.number);
           await recordHistory({
             number: msg.number,
@@ -269,6 +356,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         case 'scanMissedNow': {
           const res = await scanMissedCalls();
+          sendResponse(res);
+          return;
+        }
+        case 'callRinging': {
+          await showRingingNotification(msg.number);
+          sendResponse({ ok: true });
+          return;
+        }
+        case 'callRingingEnded': {
+          await clearRingingNotification();
+          lastRingingDigits = null;
+          sendResponse({ ok: true });
+          return;
+        }
+        case 'dialNumber': {
+          const res = await dialNumber(msg.number);
           sendResponse(res);
           return;
         }
@@ -460,3 +563,23 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     scanMissedCalls().catch((err) => console.error('[2ndNumber] missed scan error', err));
   }
 });
+
+// Clicking the ringing notification focuses the 2ndnumber tab so the user can
+// accept/reject from the WebPhone UI.
+try {
+  chrome.notifications.onClicked.addListener(async (id) => {
+    if (id !== RINGING_NOTIF_ID) return;
+    try { await chrome.notifications.clear(RINGING_NOTIF_ID); } catch (_) {}
+    try {
+      const tabs = await chrome.tabs.query({ url: APP_URL_FILTERS });
+      tabs.sort((a, b) => (/\/app\//.test(a.url || '') ? 0 : 1) - (/\/app\//.test(b.url || '') ? 0 : 1));
+      const tab = tabs[0];
+      if (tab) {
+        await chrome.tabs.update(tab.id, { active: true });
+        await chrome.windows.update(tab.windowId, { focused: true });
+      }
+    } catch (err) {
+      console.warn('[2ndNumber] notification click failed', err);
+    }
+  });
+} catch (_) { /* notifications API not available */ }

@@ -44,20 +44,21 @@
 
     $('#contactsBody').innerHTML = items.map((c) => `
       <tr data-id="${TN.escapeHtml(c.id)}">
+        <td>${TN.escapeHtml(c.phoneDisplay || TN.formatPhone(c.phone))}</td>
         <td>
           <div class="name-cell">
             <div class="avatar" style="background:${TN.colorFromString(c.name || c.phone)}">${TN.escapeHtml(TN.initials(c.name))}</div>
             <span>${TN.escapeHtml(c.name)}</span>
           </div>
         </td>
-        <td>${TN.escapeHtml(c.title || '—')}</td>
-        <td>${TN.escapeHtml(c.phoneDisplay || TN.formatPhone(c.phone))}</td>
         <td>${TN.escapeHtml(TN.roleLabel(c.role) || '—')}</td>
         <td>${TN.escapeHtml(c.company || '—')}</td>
+        <td>${TN.escapeHtml(c.title || '—')}</td>
         <td>${TN.escapeHtml(c.clientName || '—')}</td>
         <td>${TN.escapeHtml(c.step || '—')}</td>
         <td>${c.round ? 'R' + c.round : '—'}</td>
         <td class="row-actions">
+          <button class="btn btn-primary btn-sm" data-action="call" data-call="${TN.escapeHtml(TN.normalizePhone(c.phone))}">Call</button>
           <button class="btn btn-ghost btn-sm" data-action="edit">Edit</button>
           <button class="btn btn-ghost btn-sm" data-action="delete">Delete</button>
         </td>
@@ -67,7 +68,7 @@
       const id = tr.dataset.id;
       tr.addEventListener('click', (e) => {
         const action = e.target.closest('button')?.dataset.action;
-        if (action === 'delete') return; // handled below
+        if (action === 'delete' || action === 'call') return; // handled below
         openDrawer(id);
       });
       tr.querySelector('[data-action="delete"]').addEventListener('click', async (e) => {
@@ -77,6 +78,17 @@
         toast('Deleted');
         await load();
       });
+      const callBtn = tr.querySelector('[data-action="call"]');
+      if (callBtn) {
+        callBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const digits = callBtn.dataset.call;
+          if (!digits) { toast('No number'); return; }
+          toast(`Dialing ${TN.formatPhone(digits)}…`);
+          const resp = await send({ type: 'dialNumber', number: digits });
+          if (!resp || !resp.ok) toast('Could not dial');
+        });
+      }
     });
   }
 
@@ -163,7 +175,7 @@
     download('2ndnumber-contacts.json', JSON.stringify(data, null, 2), 'application/json');
   }
 
-  const CSV_COLS = ['name', 'title', 'phone', 'role', 'company', 'clientName', 'step', 'round'];
+  const CSV_COLS = ['phone', 'name', 'role', 'company', 'title', 'clientName', 'step', 'round'];
   function csvEscape(v) {
     const s = v == null ? '' : String(v);
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

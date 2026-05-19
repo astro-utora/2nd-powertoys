@@ -32,6 +32,17 @@
     toast._t = setTimeout(() => el.classList.add('hidden'), 1800);
   }
 
+  async function dialNumber(rawNumber) {
+    const digits = TN.normalizePhone(rawNumber);
+    if (!digits) {
+      toast('No number to dial');
+      return;
+    }
+    toast(`Dialing ${TN.formatPhone(digits)}…`);
+    const resp = await send({ type: 'dialNumber', number: digits });
+    if (!resp || !resp.ok) toast('Could not dial');
+  }
+
   // ---- Rendering ----
 
   function renderContacts() {
@@ -53,7 +64,16 @@
     $('#contactsEmpty').classList.toggle('hidden', items.length > 0);
     list.innerHTML = items.map(cardHtml).join('');
     list.querySelectorAll('.card').forEach((el) => {
-      el.addEventListener('click', () => openDrawer(el.dataset.id));
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.call-btn')) return;
+        openDrawer(el.dataset.id);
+      });
+    });
+    list.querySelectorAll('.call-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dialNumber(btn.dataset.call);
+      });
     });
   }
 
@@ -65,6 +85,7 @@
     if (c.company) tags.push(`<span class="tag">${TN.escapeHtml(c.company)}</span>`);
 
     const meta = [c.phoneDisplay || TN.formatPhone(c.phone), c.title, c.clientName].filter(Boolean);
+    const dialNum = TN.normalizePhone(c.phone);
 
     return `
       <div class="card" data-id="${TN.escapeHtml(c.id)}">
@@ -74,6 +95,10 @@
           <div class="card-meta">${TN.escapeHtml(meta.join(' · '))}</div>
           ${tags.length ? `<div class="card-tags">${tags.join('')}</div>` : ''}
         </div>
+        <button class="call-btn" data-call="${TN.escapeHtml(dialNum)}" title="Call ${TN.escapeHtml(TN.formatPhone(c.phone))}" aria-label="Call ${TN.escapeHtml(c.name)}">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.35 1.84.59 2.8.72A2 2 0 0 1 22 16.92z"/></svg>
+          Call
+        </button>
       </div>`;
   }
 
@@ -88,6 +113,12 @@
       ? `${items.length} entr${items.length === 1 ? 'y' : 'ies'}${filter === 'all' ? '' : ' · ' + filter}`
       : '';
     list.innerHTML = items.map(historyHtml).join('');
+    list.querySelectorAll('.call-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dialNumber(btn.dataset.call);
+      });
+    });
   }
 
   function historyHtml(h) {
@@ -111,6 +142,13 @@
       : '';
     const sub = (contactName ? `${TN.formatPhone(h.number)} · ` : '') +
       `${label}${dur} · ${TN.timeAgo(h.timestamp)}`;
+    const dialNum = TN.normalizePhone(h.number);
+    const callBtn = dialNum
+      ? `<button class="call-btn" data-call="${TN.escapeHtml(dialNum)}" title="Call ${TN.escapeHtml(TN.formatPhone(h.number))}" aria-label="Call ${TN.escapeHtml(title)}">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.35 1.84.59 2.8.72A2 2 0 0 1 22 16.92z"/></svg>
+          Call
+        </button>`
+      : '';
     return `
       <div class="history-row">
         <div class="history-dot ${TN.escapeHtml(h.action)}"></div>
@@ -118,6 +156,7 @@
           <div class="history-title">${TN.escapeHtml(title)}</div>
           <div class="history-sub">${TN.escapeHtml(sub)}</div>
         </div>
+        ${callBtn}
       </div>`;
   }
 
@@ -276,6 +315,21 @@
       await send({ type: 'clearHistory' });
       await loadHistory();
       toast('History cleared');
+    });
+    $('#scanNowBtn').addEventListener('click', async () => {
+      const btn = $('#scanNowBtn');
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Scanning…';
+      const resp = await send({ type: 'scanMissedNow' });
+      btn.disabled = false;
+      btn.textContent = orig;
+      if (!resp || !resp.ok) {
+        toast(resp && resp.error ? `Scan failed · ${resp.error}` : 'Scan failed');
+        return;
+      }
+      toast(`Scan complete · ${resp.added} added`);
+      await loadHistory();
     });
     $('#savePending').addEventListener('click', () => {
       if (!state.pendingNumber) return;

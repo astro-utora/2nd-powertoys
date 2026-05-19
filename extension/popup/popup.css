@@ -163,6 +163,20 @@ body.mode-sidebar .drawer {
 .tag.tag-step { background: rgba(16,185,129,.12); color: var(--success); }
 .tag.tag-round { background: rgba(245,158,11,.12); color: var(--warning); }
 
+/* Call button on contact / history rows */
+.call-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 10px; border-radius: 8px;
+  background: var(--primary); color: #fff; border: 1px solid var(--primary);
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 1px 3px rgba(79,70,229,.25);
+  transition: all .15s ease;
+  flex-shrink: 0;
+}
+.call-btn:hover { background: var(--primary-600); transform: translateY(-1px); }
+.call-btn:active { transform: translateY(0); }
+.call-btn svg { display: block; }
+
 /* History filter pills */
 .filters {
   display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
